@@ -635,13 +635,13 @@ void WalkingController::getZmpTrajectory()
 {
   /* Generation of ZMP Trajectory */
 
-  // cout << "walking_tick_: " << walking_tick_ << endl;
-  // cout << "t_start_: " << t_start_ << endl;
-  // cout << "t_double1_: " << t_double1_ << endl;
-  // cout << "t_double2_: " << t_double2_ << endl;
-  // cout << "t_last_: " << t_last_ << endl;
-  // cout << "t_total_: " << t_total_ << endl;
-  // cout << "current_step_num_: " << current_step_num_ << endl;
+  cout << "walking_tick_: " << walking_tick_ << endl;
+  cout << "t_start_: " << t_start_ << endl;
+  cout << "foot_step_support_frame_2: " << foot_step_support_frame_ << endl;
+  cout << "com_support_init_(0): " << com_support_init_(0) << endl;
+  cout << "com_support_init_(1): " << com_support_init_(1) << endl;
+  cout << "com_support_init_(2): " << com_support_init_(2) << endl;
+  cout << "--------------------------------" << endl;
 
   double d_x = 0.037283;
   double d_y = 0.0433965;
