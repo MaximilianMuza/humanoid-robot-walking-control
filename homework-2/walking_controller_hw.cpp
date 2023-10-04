@@ -643,22 +643,21 @@ void WalkingController::getZmpTrajectory()
   // cout << "t_total_: " << t_total_ << endl;
   // cout << "current_step_num_: " << current_step_num_ << endl;
 
-  // Drive initial X-ZMP to Zero
-  if(current_step_num_ == 0 && walking_tick_ < t_start_) {
+  double d_x = 0.037283;
+  double d_y = 0.0433965;
+
+
+  if(current_step_num_ == 0 && walking_tick_ < t_start_) 
+  {
+    /* Drive initial X-ZMP to zero */
     double initial_zmp_x = com_support_init_(0);
     double target_zmp_x = 0.0; 
     zmp_desired_(0) = 0;
     // zmp_desired_(0) = initial_zmp_x + (walking_tick_ / t_start_) * (target_zmp_x - initial_zmp_x);
     zmp_desired_(1) = (-1) * step_length_y_ / 2;
-    return;
-  }
-
-  double d_x = 0.037283;
-  double d_y = 0.0433965;
-
-  // Generate ZMP trajectories, not start or end step
-  if(current_step_num_ >= 0 && current_step_num_ <= total_step_num_) 
+  } else if(current_step_num_ >= 0 && current_step_num_ <= total_step_num_) 
   {
+    /* Main steps */
     if (walking_tick_ >= t_start_ && walking_tick_ < t_start_ + t_double1_) 
     {
       /* DSP */
@@ -678,7 +677,7 @@ void WalkingController::getZmpTrajectory()
     }  else if (walking_tick_ > t_last_ - t_double2_ && walking_tick_ <= t_last_)
     {
       /* DSP */
-      if (current_step_num_ < total_step_num_)
+      if (current_step_num_ < total_step_num_ - 1)
       {
         zmp_desired_(0) = d_x * (walking_tick_ - t_last_ + t_double2_) / t_double2_ + step_length_x_ / 2 - d_x;
       } else {
@@ -695,7 +694,7 @@ void WalkingController::getZmpTrajectory()
   /* Write relevant data to file */
   if (!motion_data_file.is_open()) 
   {
-    motion_data_file.open("/home/maximilian/Projects/hum-rob/homework-2/motion_data.csv", std::ios::app);
+    motion_data_file.open("/home/maximilian/Projects/humanoid-robot-walking-control/homework-2/motion_data.csv", std::ios::app);
   }
   motion_data_file << walking_tick_ << "," << current_step_num_ << "," << zmp_desired_(0) << "," << zmp_desired_(1) <<  std::endl;
 
