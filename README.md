@@ -1,1 +1,1 @@
-# humanoid-robot-walking-control
+# Humanoid-Robot-Walking-Control
