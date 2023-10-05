@@ -31,6 +31,7 @@ void WalkingController::compute()
       {
         circling_motion();
         getZmpTrajectory();
+        getComTrajectory();
         // supportToFloatPattern();
 
         computeIkControl_MJ(pelv_trajectory_float_, lfoot_trajectory_float_, rfoot_trajectory_float_, q_des);
@@ -631,29 +632,39 @@ void WalkingController::supportToFloatPattern()
   rfoot_trajectory_float_ = DyrosMath::inverseIsometry3d(pelv_trajectory_support_)*rfoot_trajectory_support_;
 }
 
+void WalkingController::getComTrajectory()
+{
+  /* Generation of COM Trajectory */
+}
+
 void WalkingController::getZmpTrajectory()
 {
   /* Generation of ZMP Trajectory */
 
   cout << "walking_tick_: " << walking_tick_ << endl;
-  cout << "t_start_: " << t_start_ << endl;
-  cout << "foot_step_support_frame_2: " << foot_step_support_frame_ << endl;
-  cout << "com_support_init_(0): " << com_support_init_(0) << endl;
-  cout << "com_support_init_(1): " << com_support_init_(1) << endl;
-  cout << "com_support_init_(2): " << com_support_init_(2) << endl;
-  cout << "--------------------------------" << endl;
+  // cout << "t_start_: " << t_start_ << endl;
+  // cout << "foot_step_support_frame_2: " << foot_step_support_frame_ << endl;
+  // cout << "com_support_init_(0): " << com_support_init_(0) << endl;
+  // cout << "com_support_init_(1): " << com_support_init_(1) << endl;
+  // cout << "com_support_init_(2): " << com_support_init_(2) << endl;
+  // cout << "--------------------------------" << endl;
 
   double d_x = 0.037283;
   double d_y = 0.0433965;
 
-
   if(current_step_num_ == 0 && walking_tick_ < t_start_) 
   {
     /* Drive initial X-ZMP to zero */
-    double initial_zmp_x = com_support_init_(0);
-    double target_zmp_x = 0.0; 
-    zmp_desired_(0) = 0;
-    // zmp_desired_(0) = initial_zmp_x + (walking_tick_ / t_start_) * (target_zmp_x - initial_zmp_x);
+    if (walking_tick_ < 150)
+    {
+      zmp_desired_(0) = step_length_x_ / 2;
+    } else if (walking_tick_ >= 10 && walking_tick_ < 300)
+    {
+      zmp_desired_(0) = step_length_x_ / 2 + (walking_tick_ - 150) * (-step_length_x_ / 2 / 150);
+    } else
+    {
+      zmp_desired_(0) = 0;
+    }
     zmp_desired_(1) = (-1) * step_length_y_ / 2;
   } else if(current_step_num_ >= 0 && current_step_num_ <= total_step_num_) 
   {
