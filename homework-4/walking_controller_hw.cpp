@@ -12,8 +12,8 @@ Settings settings;
 
 namespace dyros_jet_controller
 { 
-  ofstream MJ_graph("/home/maximilian/Projects/humanoid-robot-walking-control/homework-4/MJ_graph.csv");
-  ofstream motion_data_file_("/home/maximilian/Projects/humanoid-robot-walking-control/homework-4/motion_data_file.csv");
+  ofstream MJ_foot_graph("/home/maximilian/Projects/humanoid-robot-walking-control/homework-4/MJ_foot_graph.csv");
+  ofstream MJ_pelv_graph("/home/maximilian/Projects/humanoid-robot-walking-control/homework-4/MJ_pelv_graph.csv");
 
 void WalkingController::compute()
 {   
@@ -39,7 +39,7 @@ void WalkingController::compute()
         computeIkControl_MJ(pelv_trajectory_float_, lfoot_trajectory_float_, rfoot_trajectory_float_, q_des);
           
         for(int i=0; i<12; i++)
-        { desired_q_(i) = q_des(i); desired_q_(i) = current_q_(i);}
+        { desired_q_(i) = q_des(i);}
         desired_q_not_compensated_ = desired_q_ ;  
         
         updateNextStepTime();
@@ -818,10 +818,10 @@ void WalkingController::getComTrajectory()
     norm_size = norm_size + t_temp_ + 1;
  
   comGenerator(norm_size, planning_step_number);
-  if(current_step_num_ == 0)
-  { MJ_graph << ref_zmp_(walking_tick_,0) << "," << ref_zmp_(walking_tick_,1) << "," << ref_com_(walking_tick_,0) << "," << ref_com_(walking_tick_,1) << endl; }
-  else
-  { MJ_graph << ref_zmp_(walking_tick_ - t_start_, 0) << "," << ref_zmp_(walking_tick_ - t_start_,1) << "," << ref_com_(walking_tick_ - t_start_, 0) << "," << ref_com_(walking_tick_ - t_start_,1) << endl; }
+  // if(current_step_num_ == 0)
+  // { MJ_graph << ref_zmp_(walking_tick_,0) << "," << ref_zmp_(walking_tick_,1) << "," << ref_com_(walking_tick_,0) << "," << ref_com_(walking_tick_,1) << endl; }
+  // else
+  // { MJ_graph << ref_zmp_(walking_tick_ - t_start_, 0) << "," << ref_zmp_(walking_tick_ - t_start_,1) << "," << ref_com_(walking_tick_ - t_start_, 0) << "," << ref_com_(walking_tick_ - t_start_,1) << endl; }
  }
 
 void WalkingController::comGenerator(const unsigned int norm_size, const unsigned planning_step_num)
@@ -1011,16 +1011,14 @@ void WalkingController::getFootTrajectory()
 {
   /* Method to generate foot steps*/
 
-  // lfoot_trajectory_float_
-  // rfoot_trajectory_float_
-
-  // pelv_support_current_
-
-  double T = 2*(t_total_ - t_double1_ - t_double2_);
-  double omega = 2*M_PI/T;
+  double T_1 = 2*(t_total_ - t_double1_ - t_double2_);
+  double omega = 2*M_PI/T_1;
   double s_1 = 0.2;
   double s_2 = 0.25;
   double s_3 = 0.05;
+  double temp_lpx, temp_lpy, temp_lpz, temp_rpx, temp_rpy, temp_rpz, T, time_elapsed, temp_walk;
+  Eigen::VectorXd coeffs;
+
 
   if(current_step_num_ == 0 && walking_tick_ < t_start_) 
   {
@@ -1069,23 +1067,67 @@ void WalkingController::getFootTrajectory()
     } else if (walking_tick_ > t_start_ + t_double1_ && walking_tick_ < t_last_ - t_double2_)
     {
       /* SSP */
+      T = t_total_ - t_double1_ - t_double1_;
+      time_elapsed = ((int)(walking_tick_ - t_start_) % (int)t_total_) - t_double1_;
+
       if (static_cast<int>(current_step_num_) % 2 == 0) 
       {
-        rfoot_trajectory_float_.translation()(0) = -s_1 * cos(omega*(walking_tick_ - t_start_ - t_double1_));
+        if (current_step_num_ == 0) 
+        {
+          T = t_total_ - 2 * t_double1_;
+          time_elapsed = walking_tick_ - t_start_ - t_double1_;
+          coeffs = compute_quintic_coefficients(0, 0.2, T);
+          rfoot_trajectory_float_.translation()(0) = quintic_polynomial(time_elapsed, coeffs);
+        } else if (current_step_num_ == total_step_num_ - 1)
+        {
+          T = t_total_ - t_double1_ - t_double1_;
+          time_elapsed = ((int)(walking_tick_ - t_start_) % (int) t_total_) - t_double1_;
+          coeffs = compute_quintic_coefficients(0, 0.2, T);
+          lfoot_trajectory_float_.translation()(0) = quintic_polynomial(time_elapsed, coeffs) - 0.2;
+        } else
+        {
+          coeffs = compute_quintic_coefficients(0, 0.4, T);
+          rfoot_trajectory_float_.translation()(0) = quintic_polynomial(time_elapsed, coeffs) - s_1;
+        }
+
+        coeffs = compute_quintic_coefficients(0, 0.05, T / 2);
+        if (time_elapsed <= T / 2)
+        {
+            rfoot_trajectory_float_.translation()(2) = quintic_polynomial(time_elapsed, coeffs);
+        }
+        else
+        {
+            rfoot_trajectory_float_.translation()(2) = quintic_polynomial(T - time_elapsed, coeffs);
+        }
         rfoot_trajectory_float_.translation()(1) = -s_2;
-        rfoot_trajectory_float_.translation()(2) = s_3 * sin(omega*(walking_tick_ - t_start_ - t_double1_));
         lfoot_trajectory_float_.translation()(0) = 0;
         lfoot_trajectory_float_.translation()(1) = 0;
         lfoot_trajectory_float_.translation()(2) = 0;
-
       } else
       {
         rfoot_trajectory_float_.translation()(0) = 0;  
         rfoot_trajectory_float_.translation()(1) = 0;      
         rfoot_trajectory_float_.translation()(2) = 0;
-        lfoot_trajectory_float_.translation()(0) = -s_1 * cos(omega*(walking_tick_ - t_start_ - t_double1_));
+        coeffs = compute_quintic_coefficients(0, 0.4, T);   
+        if (current_step_num_ == total_step_num_ - 1)
+        {
+          T = t_total_ - t_double1_ - t_double1_;
+          time_elapsed = ((int)(walking_tick_ - t_start_) % (int) t_total_) - t_double1_;
+          coeffs = compute_quintic_coefficients(0, 0.2, T);
+          lfoot_trajectory_float_.translation()(0) = quintic_polynomial(time_elapsed, coeffs) - s_1;
+        } else {
+          lfoot_trajectory_float_.translation()(0) = quintic_polynomial(time_elapsed, coeffs) - s_1;
+        }   
         lfoot_trajectory_float_.translation()(1) = s_2;
-        lfoot_trajectory_float_.translation()(2) = s_3 * sin(omega*(walking_tick_ - t_start_ - t_double1_));
+        coeffs = compute_quintic_coefficients(0, 0.05, T / 2);
+        if (time_elapsed <= T / 2)
+        {
+            lfoot_trajectory_float_.translation()(2) = quintic_polynomial(time_elapsed, coeffs);
+        }
+        else
+        {
+            lfoot_trajectory_float_.translation()(2) = quintic_polynomial(T - time_elapsed, coeffs);
+        }
       }
     }  else if (walking_tick_ > t_last_ - t_double2_ && walking_tick_ <= t_last_)
     {
@@ -1094,6 +1136,7 @@ void WalkingController::getFootTrajectory()
       {
         if (static_cast<int>(current_step_num_) % 2 == 0) 
         {
+          cout << current_step_num_ << endl;
           rfoot_trajectory_float_.translation()(0) = s_1;
           rfoot_trajectory_float_.translation()(1) = -s_2;
           rfoot_trajectory_float_.translation()(2) = 0;
@@ -1109,27 +1152,53 @@ void WalkingController::getFootTrajectory()
           lfoot_trajectory_float_.translation()(1) = s_2;
           lfoot_trajectory_float_.translation()(2) = 0;
         }
-      } else {
+      } else
+      {
+        cout << "last" << endl;
+        /* Last step */
+        T = t_total_ - 2 * t_double1_;
+        time_elapsed = ((int)(walking_tick_ - t_start_) % (int) t_total_) - t_double1_;
+        coeffs = compute_quintic_coefficients(0, 0.2, T);
+
         rfoot_trajectory_float_.translation()(0) = 0;
         rfoot_trajectory_float_.translation()(1) = 0;
         rfoot_trajectory_float_.translation()(2) = 0;
-        lfoot_trajectory_float_.translation()(0) = 0;
+        lfoot_trajectory_float_.translation()(0) = 0; //quintic_polynomial(time_elapsed, coeffs) - s_1;
         lfoot_trajectory_float_.translation()(1) = s_2;
         lfoot_trajectory_float_.translation()(2) = 0;
       }
-    } else if (walking_tick_ > t_last_)
-    {
-      rfoot_trajectory_float_.translation()(0) = 0;
-      rfoot_trajectory_float_.translation()(1) = 0;
-      rfoot_trajectory_float_.translation()(2) = 0;
-      lfoot_trajectory_float_.translation()(0) = 0;
-      lfoot_trajectory_float_.translation()(1) = s_2;
-      lfoot_trajectory_float_.translation()(2) = 0;
     }
   } 
 
-  motion_data_file_ << walking_tick_ << ","  << lfoot_trajectory_float_.translation()(0) << "," << lfoot_trajectory_float_.translation()(1)  << "," << lfoot_trajectory_float_.translation()(2)  << "," << rfoot_trajectory_float_.translation()(0) << "," << rfoot_trajectory_float_.translation()(1)  << "," << rfoot_trajectory_float_.translation()(2) <<  std::endl;
+  rfoot_trajectory_float_.linear() = pelv_trajectory_float_.linear();
+  lfoot_trajectory_float_.linear() = pelv_trajectory_float_.linear();
 
+  MJ_foot_graph << walking_tick_ << ","  << lfoot_trajectory_float_.translation()(0) << "," << lfoot_trajectory_float_.translation()(1)  << "," << lfoot_trajectory_float_.translation()(2)  << "," << rfoot_trajectory_float_.translation()(0) << "," << rfoot_trajectory_float_.translation()(1)  << "," << rfoot_trajectory_float_.translation()(2) <<  std::endl;
+
+}
+
+Eigen::VectorXd WalkingController::compute_quintic_coefficients(double x0, double xT, double T) 
+{
+  Eigen::MatrixXd A(6, 6);
+  Eigen::VectorXd b(6);
+
+  A << 0, 0, 0, 0, 0, 1,
+          std::pow(T, 5), std::pow(T, 4), std::pow(T, 3), std::pow(T, 2), T, 1,
+          0, 0, 0, 0, 1, 0,
+          5*std::pow(T, 4), 4*std::pow(T, 3), 3*std::pow(T, 2), 2*T, 1, 0,
+          0, 0, 0, 2, 0, 0,
+          20*std::pow(T, 3), 12*std::pow(T, 2), 6*T, 2, 0, 0;
+
+  b << x0, xT, 0, 0, 0, 0;
+
+  Eigen::VectorXd coeffs = A.colPivHouseholderQr().solve(b);
+
+  return coeffs;
+}
+
+double WalkingController::quintic_polynomial(double t, const Eigen::VectorXd& coeffs) 
+{
+  return coeffs(0) * std::pow(t, 5) + coeffs(1) * std::pow(t, 4) + coeffs(2) * std::pow(t, 3) + coeffs(3) * std::pow(t, 2) + coeffs(4) * t + coeffs(5);
 }
   
 void WalkingController::getPelvTrajectory()
@@ -1137,20 +1206,17 @@ void WalkingController::getPelvTrajectory()
   /* 
   Method to generate pelv trajectory
   Using P-Control
-   */
+  */
 
-  // Eigen::Vector2d K = Eigen::Vector2d(1.0,1.0);
+  Eigen::Vector2d K = Eigen::Vector2d(1.0,1.0);
 
-  // // X-direction
-  // pelv_trajectory_float_.translation()(0) = pelv_support_current_.translation()(0) + K(0)*(ref_com_(walking_tick_,0)-com_support_current_(0));
+  pelv_trajectory_float_.translation()(0) = pelv_support_current_.translation()(0) + K(0)*(ref_com_(walking_tick_,0)-com_support_current_(0));
+  pelv_trajectory_float_.translation()(1) = pelv_support_current_.translation()(1) + K(1)*(ref_com_(walking_tick_,1)-com_support_current_(1));
+  pelv_trajectory_float_.translation()(2) = pelv_support_start_.translation()(2);
+  pelv_trajectory_float_.linear().setIdentity();
 
-  // // Y-direction
-  // pelv_trajectory_float_.translation()(1) = pelv_support_current_.translation()(1) + K(1)*(ref_com_(walking_tick_,0)-com_support_current_(1));
+  MJ_pelv_graph << walking_tick_ << ","  << pelv_trajectory_float_.translation()(0) << "," << pelv_trajectory_float_.translation()(1)  << "," << pelv_trajectory_float_.translation()(2) <<  std::endl;
 
-  // // Z-direction
-  // pelv_trajectory_float_.translation()(2) = pelv_support_start_.translation()(2);
-
-  // pelv_trajectory_float_.linear().setIdentity();
 }
 
 void WalkingController::supportToFloatPattern()
