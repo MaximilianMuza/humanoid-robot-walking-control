@@ -12,7 +12,7 @@ Settings settings;
 
 namespace dyros_jet_controller
 { 
-  ofstream MJ_graph("/home/myeongju/MJ_graph.txt");
+  ofstream MJ_graph("/home/maximilian/Projects/humanoid-robot-walking-control/homework-5/MJ_graph.csv");
 
 void WalkingController::compute()
 {   
@@ -36,9 +36,11 @@ void WalkingController::compute()
         supportToFloatPattern();
         computeIkControl_MJ(pelv_trajectory_float_, lfoot_trajectory_float_, rfoot_trajectory_float_, q_des);
         compliant_control(q_des);
+
         for(int i=0; i<12; i++)
         { desired_q_(i) = q_des(i); } 
         desired_q_not_compensated_ = desired_q_ ;  
+
         hip_compensator();      
         updateNextStepTime();
       }
@@ -818,12 +820,12 @@ void WalkingController::getComTrajectory()
 
   if(current_step_num_ == 0)
   {
-    com_desired_(0) = ref_com_(walking_tick_,0);
+    com_desired_(0) = 0;//ref_com_(walking_tick_,0);
     com_desired_(1) = ref_com_(walking_tick_,1);
   }
   else
   {
-    com_desired_(0) = ref_com_(walking_tick_ - t_start_, 0);
+    com_desired_(0) = 0;//ref_com_(walking_tick_ - t_start_, 0);
     com_desired_(1) = ref_com_(walking_tick_ - t_start_, 1);
   }
 
@@ -1033,7 +1035,7 @@ void WalkingController::getPelvTrajectory()
   else
   { Trunk_trajectory_euler(2) = z_rot/2.0; } 
                   
-  pelv_trajectory_support_.linear() = DyrosMath::rotateWithZ(Trunk_trajectory_euler(2))*DyrosMath::rotateWithY(Trunk_trajectory_euler(1))*DyrosMath::rotateWithX(Trunk_trajectory_euler(0));
+  pelv_trajectory_0support_.linear() = DyrosMath::rotateWithZ(Trunk_trajectory_euler(2))*DyrosMath::rotateWithY(Trunk_trajectory_euler(1))*DyrosMath::rotateWithX(Trunk_trajectory_euler(0));
   */
 }
 
@@ -1052,12 +1054,11 @@ void WalkingController::compliant_control(Eigen::Vector12d q_des)
   */
 
   int K_dist;
-  unsigned int k = walking_tick_;
   Eigen::Vector12d q_controlled;
   Eigen::Vector12d prev_est_disturbance;
 
   // Set K_dist
-  if (walking_tick_ >= t_total_ - t_double2_ - 0.1 && walking_tick_ < t_last_ - t_double2_)
+  if (walking_tick_ >= t_total_ - t_double2_ - 0.1/0.005 && walking_tick_ < t_last_ - t_double2_)
   {
     K_dist = 1;
   } else
@@ -1065,22 +1066,22 @@ void WalkingController::compliant_control(Eigen::Vector12d q_des)
     K_dist = 0;
   }
 
-  if (k == 0 || k == 1)
+  if (walking_tick_ == 0 || walking_tick_ == 1)
   {
     prev_est_disturbance.setZero();
   } else {
     prev_est_disturbance = 1.594*(1.150*prev_motor_q_leg_ - prev2_motor_q_leg_) + 0.761*(prev2_est_disturbance_ - 0.3142*prev_q_controlled_);
   }
 
-  q_controlled = q_des + K_dist*prev_est_disturbance;
+  MJ_graph << walking_tick_ << "," << prev_est_disturbance(0) << "," << prev_est_disturbance(1) << "," << prev_est_disturbance(2) << "," << prev_est_disturbance(3) << "," << prev_est_disturbance(4) << "," << prev_est_disturbance(5) << "," << prev_est_disturbance(6) << "," << prev_est_disturbance(7) << "," << prev_est_disturbance(8) << "," << prev_est_disturbance(9) << "," << prev_est_disturbance(10) << "," << prev_est_disturbance(11) << endl; 
+  q_controlled = q_des - K_dist*prev_est_disturbance;
   q_des = q_controlled;
-  cout << q_des << endl;
-  
+
   // Store values
   prev2_motor_q_leg_ = prev_motor_q_leg_;
   prev_motor_q_leg_ = current_motor_q_leg_;
   prev2_est_disturbance_ = prev_est_disturbance;
-  prev_q_controlled_ = q_controlled;  
+  prev_q_controlled_ = q_controlled; 
 }
 
 
