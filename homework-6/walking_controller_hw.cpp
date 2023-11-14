@@ -1092,18 +1092,23 @@ void WalkingController::compliant_control(Eigen::Vector12d q_des)
 
 void WalkingController::zmpPreviewControl(Eigen::Vector12d desired_leg_q)
 {
-  // Define Preview Matrices
+  for(int l = 1; l < n_l_; l++)
+  {
+    cout << "ZMP_X: " << ref_zmp_(walking_tick_ + l,0) << endl;
+  }
+  // q_controlled = -G_I_ * error_integral - G_x_ * x - zmp_integral;
 }
 
 void WalkingController::initPreviewControl()
 {
+  cout << "Init Preview Control" << endl;
   // Define State Space Matrices
   double R = 1.0e-6; 
-  Eigen::VectorXd I_tilde(4);
-  Eigen::VectorXd B_tilde(4);
-  Eigen::MatrixXd K_tilde(4,4);
-  Eigen::MatrixXd A_tilde(4,4);
-  Eigen::MatrixXd F_tilde(4,3);
+  Eigen::VectorXd I_tilde = Eigen::VectorXd(4);
+  Eigen::VectorXd B_tilde = Eigen::VectorXd(4);
+  Eigen::MatrixXd K_tilde = Eigen::MatrixXd(4,4);
+  Eigen::MatrixXd A_tilde = Eigen::MatrixXd(4,4);
+  Eigen::MatrixXd F_tilde = Eigen::MatrixXd(4,3);
 
   I_tilde << 1,0,0,0;
   B_tilde << -0.0510,0,0,1;
@@ -1125,17 +1130,18 @@ void WalkingController::initPreviewControl()
   G_x_ = 1.0/(R + B_tilde.transpose() * K_tilde * B_tilde) * B_tilde.transpose() * K_tilde * F_tilde;
   Eigen::MatrixXd A_c = A_tilde - B_tilde * 1.0/(R + B_tilde.transpose() * K_tilde * B_tilde) * B_tilde.transpose() * K_tilde * A_tilde;
   
-  Eigen::MatrixXd X(4, n_l_);
+  Eigen::MatrixXd X = Eigen::MatrixXd(4, n_l_);
   X.col(0) = -A_c.transpose() * K_tilde * I_tilde;
   for (int l = 1; l < n_l_; ++l) {
       X.col(l) = A_c.transpose() * X.col(l - 1);
   }
 
-  Eigen::MatrixXd G_d(1, n_l_);
+  Eigen::MatrixXd G_d_ = Eigen::MatrixXd(1, n_l_);
   G_d_(0, 0) = -G_I_;
   for (int l = 1; l < n_l_; ++l) {
       G_d_(0, l) = 1.0/(R + B_tilde.transpose() * K_tilde * B_tilde) * B_tilde.transpose() * X.col(l - 1);
   }
+  cout << "Init Preview Control Successful" << endl;
 }
 
 void WalkingController::getFootTrajectory()
