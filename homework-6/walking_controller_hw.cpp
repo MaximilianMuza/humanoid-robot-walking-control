@@ -29,10 +29,6 @@ void WalkingController::compute()
     {
       if(current_step_num_< total_step_num_)
       {
-        if(walking_tick_ == 0)
-        {
-          initPreviewControl();
-        }
         getZmpTrajectory();
         getComTrajectory();
         getPelvTrajectory();     
@@ -40,8 +36,6 @@ void WalkingController::compute()
         supportToFloatPattern();
         computeIkControl_MJ(pelv_trajectory_float_, lfoot_trajectory_float_, rfoot_trajectory_float_, q_des);
         // compliant_control(q_des);
-        zmpPreviewControl(q_des);
-        cout << com_support_init_(2) << endl;
 
         for(int i=0; i<12; i++)
         { desired_q_(i) = q_des(i); } 
@@ -812,215 +806,59 @@ void WalkingController::onestepZmp(unsigned int current_step_number, Eigen::Vect
 
 void WalkingController::getComTrajectory()
 {
-  unsigned int planning_step_number = 3;
-  unsigned int norm_size = 0;
-  
-  if(current_step_num_ >= total_step_num_ - planning_step_number)
-    norm_size = (t_last_ - t_start_ + 1)*(total_step_num_ - current_step_num_) + 20*hz_;
-  else
-    norm_size = (t_last_ - t_start_ + 1)*(planning_step_number); 
-  if(current_step_num_ == 0)
-    norm_size = norm_size + t_temp_ + 1;
- 
-  comGenerator(norm_size, planning_step_number);
+  if(walking_tick_ == 0)  
+  { preview_Parameter(1.0/hz_, 16*hz_/10, Gi_, Gd_, Gx_, A_, B_, C_); }
 
   if(current_step_num_ == 0)
-  {
-    com_desired_(0) = 0;//ref_com_(walking_tick_,0);
-    com_desired_(1) = ref_com_(walking_tick_,1);
-  }
+  { zmp_start_time_ = 0.0; }
   else
-  {
-    com_desired_(0) = 0;//ref_com_(walking_tick_ - t_start_, 0);
-    com_desired_(1) = ref_com_(walking_tick_ - t_start_, 1);
-  }
+  { zmp_start_time_ = t_start_; }
+          
+  previewcontroller(1.0/hz_, 16*hz_/10, walking_tick_-zmp_start_time_, xi_, yi_, xs_, ys_, UX_, UY_, Gi_, Gd_, Gx_, A_, B_, C_, xd_, yd_);
 
-  com_desired_(2) = pelv_support_start_.translation()(2); 
+  xs_ = xd_; ys_ = yd_;
 
-}
+  com_desired_(0) = xd_(0);
+  com_desired_(1) = yd_(0);
+  com_desired_(2) = pelv_support_start_.translation()(2);
 
-void WalkingController::comGenerator(const unsigned int norm_size, const unsigned planning_step_num)
-{ 
-  ref_com_.resize(norm_size, 2); 
-  Eigen::VectorXd temp_cx;
-  Eigen::VectorXd temp_cy;
-  
-  unsigned int index = 0;
-
-  if(current_step_num_ == 0)  
-  {
-    for (int i = 0; i <= t_temp_; i++) 
-    { 
-      ref_com_(i,0) = DyrosMath::cubic(i, 0, 2*hz_,com_support_init_(0) + com_offset_(0), 0, 0, 0);
-      ref_com_(i,1) = com_support_init_(1);
-      if(i >= 2*hz_)
-      { 
-        Eigen::Vector3d ref_y_com ;
-        ref_y_com = (DyrosMath::QuinticSpline(i, 2*hz_, 3*hz_,com_support_init_(1), 0, 0, com_support_init_(1), 0.289384/hz_,0));
-        ref_com_(i,1) = ref_y_com(0);
-      }
-      index++;
-    }    
-  }
-  if(current_step_num_ >= total_step_num_ - planning_step_num)
-  {  
-    for(unsigned int i = current_step_num_; i < total_step_num_; i++)
-    {
-      onestepCom(i, temp_cx, temp_cy);
+  if (walking_tick_ == t_start_ + t_total_-1 && current_step_num_ != total_step_num_-1)  
+  { 
+    Eigen::Vector3d com_pos_prev;
+    Eigen::Vector3d com_pos;
+    Eigen::Vector3d com_vel_prev;
+    Eigen::Vector3d com_vel;
+    Eigen::Vector3d com_acc_prev;
+    Eigen::Vector3d com_acc; 
+    Eigen::Matrix3d temp_rot;
+    Eigen::Vector3d temp_pos;
+    
+    temp_rot = DyrosMath::rotateWithZ(-foot_step_support_frame_(current_step_num_,5)); 
+    for(int i=0; i<3; i++)
+      temp_pos(i) = foot_step_support_frame_(current_step_num_,i);     
+    
+    com_pos_prev(0) = xs_(0);
+    com_pos_prev(1) = ys_(0);
+    com_pos = temp_rot*(com_pos_prev - temp_pos);
      
-      for(unsigned int j = 0; j < t_total_; j++)
-      {
-        ref_com_(index + j, 0) = temp_cx(j);
-        ref_com_(index + j, 1) = temp_cy(j);    
-      }
-      index = index + t_total_;
-    }
-    
-    for(unsigned int j = 0; j < 20*hz_; j++)
-    {
-      ref_com_(index + j, 0) = ref_com_(index -1, 0);
-      ref_com_(index + j, 1) = ref_com_(index -1, 1);
-    }
+    com_vel_prev(0) = xs_(1);
+    com_vel_prev(1) = ys_(1);
+    com_vel_prev(2) = 0.0;
+    com_vel = temp_rot*com_vel_prev;
 
-    if((current_step_num_ == total_step_num_ - 1)) 
-    { Eigen::Vector3d ref_y_com ;
-            
-      for(int i = 0; i < 240; i++)
-      {
-        ref_y_com = DyrosMath::QuinticSpline(i+239, 120, 479, 0.031081, -2.60209e-18, 1.05331e-05, 0.12779, 0, 0);
-        ref_com_(index + i, 1) = ref_y_com(0) ;
-      }
-    }
+    com_acc_prev(0) = xs_(2);
+    com_acc_prev(1) = ys_(2);
+    com_acc_prev(2) = 0.0;
+    com_acc = temp_rot*com_acc_prev;
 
-    index = index + 20*hz_;      
+    xs_(0) = com_pos(0);
+    ys_(0) = com_pos(1);
+    xs_(1) = com_vel(0);
+    ys_(1) = com_vel(1);
+    xs_(2) = com_acc(0);
+    ys_(2) = com_acc(1); 
   }
-  else 
-  { 
-    for(unsigned int i = current_step_num_; i < current_step_num_ + planning_step_num; i++)  
-    {
-      onestepCom(i, temp_cx, temp_cy);
-      for (unsigned int j = 0; j < t_total_; j++) 
-      {
-        ref_com_(index+j,0) = temp_cx(j);
-        ref_com_(index+j,1) = temp_cy(j);
-      }      
-      index = index + t_total_; 
-    }   
-  }   
-}
-
-void WalkingController::onestepCom(unsigned int current_step_number, Eigen::VectorXd& temp_cx, Eigen::VectorXd& temp_cy)
-{
-  temp_cx.resize(t_total_);  
-  temp_cy.resize(t_total_);
-  temp_cx.setZero();
-  temp_cy.setZero();
-
-  double A = 0, B = 0, Cx1 = 0, Cx2 = 0, Cy1 = 0, Cy2 = 0, Kx = 0, Ky = 0, wn = 0 ;
-  if(current_step_number == 0)
-  { 
-    wn = sqrt(GRAVITY / com_support_init_(2));
-    A = -(foot_step_support_frame_(current_step_number, 1) )/2 ;
-    B =  (supportfoot_support_init_(0) + foot_step_support_frame_(current_step_number, 0))/2;
-    Kx = (B * 0.15 * wn) / ((0.15*wn) + tanh(wn*(0.45)));
-    Ky = (A * 0.15 * wn * tanh(wn*0.45))/(1 + 0.15 * wn * tanh(wn*0.45)); 
-    Cx1 = Kx - B;
-    Cx2 = Kx/(wn*0.15);
-    Cy1 = Ky - A;
-    Cy2 = Ky/(wn*0.15);
-        
-    for(int i = 0; i < t_total_; i++)
-    {
-      temp_cx(i) = DyrosMath::cubic(i, 0, t_total_-1,0 ,0.10154 , 0, Kx/(t_rest_init_ + t_double1_));
-      if(i >= 0 && i < (t_rest_init_ + t_double1_))
-      {  
-        temp_cy(i) = com_offset_(1) + com_support_init_(1) + Ky / (t_rest_init_ + t_double1_) * (i+1);
-      }
-      else if(i >= (t_rest_init_ + t_double1_) && i < t_total_ - t_rest_last_ - t_double2_ )
-      {
-        temp_cy(i) = A + com_offset_(1) + com_support_init_(1) + Cy1 *cosh(wn*(i/hz_ - 0.15)) + Cy2*sinh(wn*(i/hz_-0.15)) ;
-      }
-      else if(i >= t_total_ - t_rest_last_ - t_double2_  && i < t_total_)  
-      {
-        temp_cy(i) = Ky + (supportfoot_support_init_(1) + foot_step_support_frame_(current_step_number, 1))/2 + Ky/(t_rest_last_ + t_double2_)*-(i+1 - (t_total_ - t_rest_last_ - t_double2_));
-      }     
-    }    
-  }
-  else if(current_step_number == 1)
-  { 
-    wn = sqrt(GRAVITY / com_support_init_(2));
-    A = (foot_step_support_frame_(current_step_number-1, 1) - supportfoot_support_init_(1))/2 ;
-    B = foot_step_support_frame_(current_step_number-1, 0) - (supportfoot_support_init_(0) + foot_step_support_frame_(current_step_number-1, 0))/2;
-    Kx = (B * 0.15 * wn) / ((0.15*wn) + tanh(wn*0.45));
-    Ky = (A * 0.15 * wn * tanh(wn*0.45))/(1 + 0.15 * wn * tanh(wn*0.45)); 
-    Cx1 = Kx - B;
-    Cx2 = Kx/(wn*0.15);
-    Cy1 = Ky - A;
-    Cy2 = Ky/(wn*0.15);    
-    for(int i = 0; i < t_total_; i++)
-    {
-      if(i >= 0 && i < (t_rest_init_ + t_double1_))
-      { 
-        temp_cx(i) = (foot_step_support_frame_(current_step_number-1, 0) + supportfoot_support_init_(0))/2 + Kx / (t_rest_init_+ t_double1_) * (i+1);
-        temp_cy(i) = (foot_step_support_frame_(current_step_number-1, 1) + supportfoot_support_init_(1))/2 + Ky / (t_rest_init_+ t_double1_) * (i+1);
-      }
-      else if(i >= (t_rest_init_ + t_double1_) && i < (t_total_ - t_rest_last_ - t_double2_))  
-      {
-        temp_cx(i) = (supportfoot_support_init_(0) + foot_step_support_frame_(current_step_number-1, 0))/2 + Cx1 *cosh(wn*(i/hz_ - 0.15)) + Cx2*sinh(wn*(i/hz_-0.15)) + B;
-        temp_cy(i) = A + (supportfoot_support_init_(1) + foot_step_support_frame_(current_step_number-1, 1))/2 + Cy1 *cosh(wn*(i/hz_ - 0.15)) + Cy2*sinh(wn*(i/hz_-0.15)) ;
-      }
-      else if(i >= (t_total_ - t_rest_last_ - t_double2_) && i < t_total_)  
-      { 
-        temp_cx(i) = (foot_step_support_frame_(current_step_number, 0)+ foot_step_support_frame_(current_step_number-1, 0)) /2 -Kx + Kx/(t_rest_last_ + t_double2_)*(i+1 - (t_total_ - t_rest_last_ - t_double2_));
-        temp_cy(i) = Ky + (foot_step_support_frame_(current_step_number-1, 1) + foot_step_support_frame_(current_step_number, 1))/2 + Ky/(t_rest_last_ + t_double2_)*-(i+1 - (t_total_ - t_rest_last_ - t_double2_));
-      }
-    }
-  }
-  else
-  { 
-    wn = sqrt(GRAVITY / com_support_init_(2));
-    A = (foot_step_support_frame_(current_step_number-1, 1) - foot_step_support_frame_(current_step_number-2, 1))/2 ;
-    B = foot_step_support_frame_(current_step_number-1, 0) - (foot_step_support_frame_(current_step_number-2, 0) + foot_step_support_frame_(current_step_number-1, 0))/2;
-    Kx = (B * 0.15 * wn) / ((0.15*wn) + tanh(wn*0.45));
-    Ky = (A * 0.15 * wn * tanh(wn*0.45))/(1 + 0.15 * wn * tanh(wn*0.45)); 
-    Cx1 = Kx - B;
-    Cx2 = Kx/(wn*0.15);
-    Cy1 = Ky - A;
-    Cy2 = Ky/(wn*0.15);
-    for(int i = 0; i < t_total_; i++)
-    {
-      if(i >= 0 && i < (t_rest_init_ + t_double1_))
-      {
-        temp_cx(i) = (foot_step_support_frame_(current_step_number-2, 0) + foot_step_support_frame_(current_step_number-1, 0))/2 + Kx/(t_rest_init_ + t_double1_)*(i);
-        temp_cy(i) = (foot_step_support_frame_(current_step_number-2, 1) + foot_step_support_frame_(current_step_number-1, 1))/2 + Ky/(t_rest_init_ + t_double1_)*(i);
-      }            
-      else if(i >= (t_rest_init_ + t_double1_) && i < (t_total_ - t_rest_last_ - t_double2_)) 
-      {
-        temp_cx(i) = (foot_step_support_frame_(current_step_number-2, 0) + foot_step_support_frame_(current_step_number-1, 0))/2 + Cx1 *cosh(wn*(i/hz_ - 0.15)) + Cx2*sinh(wn*(i/hz_-0.15)) + B;
-        temp_cy(i) = A + (foot_step_support_frame_(current_step_number-2, 1) + foot_step_support_frame_(current_step_number-1, 1))/2 + Cy1 *cosh(wn*(i/hz_ - 0.15)) + Cy2*sinh(wn*(i/hz_-0.15)) ;
-         
-      }
-      else if(i >= (t_total_ - t_rest_last_ - t_double2_) && i < t_total_)  
-      {
-        temp_cx(i) = (foot_step_support_frame_(current_step_number, 0)+ foot_step_support_frame_(current_step_number-1, 0)) /2 -Kx + Kx/(t_rest_last_ + t_double2_)*(i+1 - (t_total_ - t_rest_last_ - t_double2_));
-        temp_cy(i) = Ky + (foot_step_support_frame_(current_step_number-1, 1) + foot_step_support_frame_(current_step_number, 1))/2 - Ky/(t_rest_last_ + t_double2_)*(i+1 - (t_total_ - t_rest_last_ - t_double2_));
-      }
-      
-      if(i >= (t_rest_init_ + t_double1_) && (current_step_num_ == total_step_num_ - 1) && i < t_total_ ) 
-      { 
-        Eigen::Vector3d ref_x_com ;
-        ref_x_com = DyrosMath::QuinticSpline(i, 30, 239, (foot_step_support_frame_(current_step_number-2, 0) + foot_step_support_frame_(current_step_number-1, 0))/2 + Kx, 0.289384/hz_, 0, (foot_step_support_frame_(current_step_number-2, 0) + foot_step_support_frame_(current_step_number-1, 0))/2 + B, 0, 0);//com_support_init_(1)+com_offset_(1), 0.289384/hz_,0));
-        temp_cx(i) = ref_x_com(0);
-      }
-      if( i >= 120 && i < t_total_ && (current_step_num_ == total_step_num_ - 1))  
-      { 
-        Eigen::Vector3d ref_y_com ; 
-        ref_y_com = DyrosMath::QuinticSpline(i, 120, 479, 0.031081, (Cy1 *sinh(wn*(120/hz_ - 0.15))*wn/hz_ + Cy2*cosh(wn*(120/hz_-0.15))*wn/hz_), (Cy1 *cosh(wn*(120/hz_ - 0.15))*wn/hz_*wn/hz_ + Cy2*sinh(wn*(120/hz_-0.15))*wn/hz_*wn/hz_), 0.12779, 0, 0);
-        temp_cy(i) = ref_y_com(0);
-      }      
-    } 
-  }
-    
+  
 }
 
 void WalkingController::getPelvTrajectory()
@@ -1090,59 +928,281 @@ void WalkingController::compliant_control(Eigen::Vector12d q_des)
   prev_q_controlled_ = q_controlled; 
 }
 
-void WalkingController::zmpPreviewControl(Eigen::Vector12d desired_leg_q)
-{
-  for(int l = 1; l < n_l_; l++)
-  {
-    cout << "ZMP_X: " << ref_zmp_(walking_tick_ + l,0) << endl;
-  }
-  // q_controlled = -G_I_ * error_integral - G_x_ * x - zmp_integral;
-}
+void WalkingController::preview_Parameter(double dt, int NL, Eigen::MatrixXd& Gi, Eigen::VectorXd& Gd, Eigen::MatrixXd& Gx, Eigen::MatrixXd& A, Eigen::VectorXd& B, Eigen::MatrixXd& C)
+{ 
 
-void WalkingController::initPreviewControl()
-{
-  cout << "Init Preview Control" << endl;
-  // Define State Space Matrices
-  double R = 1.0e-6; 
-  Eigen::VectorXd I_tilde = Eigen::VectorXd(4);
-  Eigen::VectorXd B_tilde = Eigen::VectorXd(4);
-  Eigen::MatrixXd K_tilde = Eigen::MatrixXd(4,4);
-  Eigen::MatrixXd A_tilde = Eigen::MatrixXd(4,4);
-  Eigen::MatrixXd F_tilde = Eigen::MatrixXd(4,3);
+  // // Original Cart State Space Model
+  // A.resize(3,3);
+  // A << 1,dt,pow(dt,2)/2,
+  //      0,1,dt,
+  //      0,0,1;
 
-  I_tilde << 1,0,0,0;
-  B_tilde << -0.0510,0,0,1;
-  K_tilde << 3.2148,0,2.2148,1.1639,
-            0,0,0,0,
-            2.2148,0,2.2148,1.1639,
-            1.1639,0,1.1639,1.1103;
-  A_tilde << 1,0,1,0,
-            0,0,1,0,
-            0,0,0,1,
-            0,0,0,0;
-  F_tilde << 0,1,0,
-            0,1,0,
-            0,0,1,
-            0,0,0;
+  // B.resize(3);
+  // B << pow(dt,3)/6,pow(dt,3)/2,dt;
 
-  // Calculate Preview Control Matrices
-  G_I_ = 1.0/(R + B_tilde.transpose() * K_tilde * B_tilde) * B_tilde.transpose() * K_tilde * I_tilde;
-  G_x_ = 1.0/(R + B_tilde.transpose() * K_tilde * B_tilde) * B_tilde.transpose() * K_tilde * F_tilde;
-  Eigen::MatrixXd A_c = A_tilde - B_tilde * 1.0/(R + B_tilde.transpose() * K_tilde * B_tilde) * B_tilde.transpose() * K_tilde * A_tilde;
+  // C.resize(1,3);
+  // C << 1,0,-0.72/9.81;
+
+  A.resize(3,3);
+  A(0,0) = 1.0;
+  A(0,1) = dt;
+  A(0,2) = dt*dt*0.5;
+  A(1,0) = 0;
+  A(1,1) = 1.0;
+  A(1,2) = dt;
+  A(2,0) = 0;
+  A(2,1) = 0;
+  A(2,2) = 1;
   
-  Eigen::MatrixXd X = Eigen::MatrixXd(4, n_l_);
-  X.col(0) = -A_c.transpose() * K_tilde * I_tilde;
-  for (int l = 1; l < n_l_; ++l) {
-      X.col(l) = A_c.transpose() * X.col(l - 1);
+  B.resize(3);
+  B(0) = dt*dt*dt/6;
+  B(1) = dt*dt/2;
+  B(2) = dt;
+  
+  C.resize(1,3);
+  C(0,0) = 1;
+  C(0,1) = 0;
+  C(0,2) = -0.72/GRAVITY;
+
+  Eigen::MatrixXd A_bar;
+  Eigen::VectorXd B_bar;
+
+  B_bar.resize(4);    
+  B_bar.segment(0,1) = C*B; 
+  B_bar.segment(1,3) = B;
+  
+  Eigen::Matrix1x4d B_bar_tran;
+  B_bar_tran = B_bar.transpose();
+  
+  Eigen::MatrixXd I_bar;
+  Eigen::MatrixXd F_bar;
+  A_bar.resize(4,4);
+  I_bar.resize(4,1);
+  F_bar.resize(4,3);
+  F_bar.setZero();
+
+  F_bar.block<1,3>(0,0) = C*A;
+  F_bar.block<3,3>(1,0) = A;
+  
+  I_bar.setZero();
+  I_bar(0,0) = 1.0;
+
+  A_bar.block<4,1>(0,0) = I_bar;
+  A_bar.block<4,3>(0,1) = F_bar;
+  
+  Eigen::MatrixXd Qe;
+  Qe.resize(1,1);
+  Qe(0,0) = 1.0;
+
+  Eigen::MatrixXd R;
+  R.resize(1,1);
+  R(0,0) = 0.000001;
+
+  Eigen::MatrixXd Qx;
+  Qx.resize(3,3);
+  Qx.setZero();
+
+  Eigen::MatrixXd Q_bar;
+  Q_bar.resize(3,3);
+  Q_bar.setZero();
+  Q_bar(0,0) = Qe(0,0);
+
+  Eigen::Matrix4d K;
+  
+  K(0,0) = 110.810151079932; 
+  K(0,1) = 6084.039715635188;  
+  K(0,2) = 1663.959723322499; 
+  K(0,3) = 4.261708891790; 
+  K(1,0) = 6084.039715635188; 
+  K(1,1) = 341381.415400940750; 
+  K(1,2) = 93392.301692011009; 
+  K(1,3) = 246.148922659995; 
+  K(2,0) = 1663.959723322499; 
+  K(2,1) = 93392.301692011009; 
+  K(2,2) = 25549.800314421802; 
+  K(2,3) = 67.424043965319; 
+  K(3,0) = 4.261708891790; 
+  K(3,1) = 246.148922659995; 
+  K(3,2) = 67.424043965319; 
+  K(3,3) = 0.201152871274;
+  
+  Eigen::MatrixXd Temp_mat;
+  Eigen::MatrixXd Temp_mat_inv;
+  Eigen::MatrixXd Ac_bar;
+  Temp_mat.resize(1,1);
+  Temp_mat.setZero();
+  Temp_mat_inv.resize(1,1);
+  Temp_mat_inv.setZero();
+  Ac_bar.setZero();
+  Ac_bar.resize(4,4);
+
+  Temp_mat = R + B_bar_tran * K * B_bar;
+  Temp_mat_inv = Temp_mat.inverse();
+  
+  Ac_bar = A_bar - B_bar * Temp_mat_inv * B_bar_tran * K * A_bar;
+  
+  Eigen::MatrixXd Ac_bar_tran(4,4);
+  Ac_bar_tran = Ac_bar.transpose();
+  
+  Gi.resize(1,1); Gx.resize(1,3);
+  Gi = Temp_mat_inv * B_bar_tran * K * I_bar ;
+  Gx = Temp_mat_inv * B_bar_tran * K * F_bar ;   
+  
+  Eigen::MatrixXd X_bar;
+  Eigen::Vector4d X_bar_col;
+  X_bar.resize(4, NL); 
+  X_bar.setZero();
+  X_bar_col.setZero();
+  X_bar_col = - Ac_bar_tran * K * I_bar;
+
+  for(int i = 0; i < NL; i++)
+  {
+    X_bar.block<4,1>(0,i) = X_bar_col;
+    X_bar_col = Ac_bar_tran*X_bar_col;
+  }           
+
+  Gd.resize(NL);
+  Eigen::VectorXd Gd_col(1);
+  Gd_col(0) = -Gi(0,0);
+  
+  for(int i = 0; i < NL; i++)
+  {
+    Gd.segment(i,1) = Gd_col;
+    Gd_col = Temp_mat_inv * B_bar_tran * X_bar.col(i) ;
   }
 
-  Eigen::MatrixXd G_d_ = Eigen::MatrixXd(1, n_l_);
-  G_d_(0, 0) = -G_I_;
-  for (int l = 1; l < n_l_; ++l) {
-      G_d_(0, l) = 1.0/(R + B_tilde.transpose() * K_tilde * B_tilde) * B_tilde.transpose() * X.col(l - 1);
-  }
-  cout << "Init Preview Control Successful" << endl;
+  // // Controlled Cart State Space Model
+  // double R = 1.0e-6; 
+  // Eigen::VectorXd I_tilde = Eigen::VectorXd(4);
+  // Eigen::VectorXd B_tilde = Eigen::VectorXd(4);
+  // Eigen::MatrixXd K_tilde = Eigen::MatrixXd(4,4);
+  // Eigen::MatrixXd A_tilde = Eigen::MatrixXd(4,4);
+  // Eigen::MatrixXd F_tilde = Eigen::MatrixXd(4,3);
+
+  // I_tilde << 1,0,0,0;
+  // B_tilde << -0.0003,0,0,0.0050;
+  // K_tilde << 111.1436,6.1209e+03,1.6792e+03,4.2996,
+  //            6.1209e+03,3.4445e+05,9.4524e+04,248.9892
+  //            1.6792e+03,9.4524e+04,2.5940e+04,68.4125
+  //            4.2996,248.9892,68.4125,0.2037;
+  // A_tilde << 1,1,0.005,-0.0509,
+  //            0,1,0.005,0,
+  //            0,0,1,0.005,
+  //            0,0,0,1;
+  // F_tilde << 1.0,0.0050,-0.0509,
+  //            1.0,0.0050,0.0000,
+  //            0,1.0,0.0050,
+  //            0,0,1.0;
+
+  // // Calculate Preview Control Matrices
+  // Gi_ = 1.0/(R + B_tilde.transpose() * K_tilde * B_tilde) * B_tilde.transpose() * K_tilde * I_tilde;
+  // Gx_ = 1.0/(R + B_tilde.transpose() * K_tilde * B_tilde) * B_tilde.transpose() * K_tilde * F_tilde;
+  // Eigen::MatrixXd A_c = A_tilde - B_tilde * 1.0/(R + B_tilde.transpose() * K_tilde * B_tilde) * B_tilde.transpose() * K_tilde * A_tilde;
+
+  // Eigen::MatrixXd X = Eigen::MatrixXd(4, NL);
+  // X.col(0) = -A_c.transpose() * K_tilde * I_tilde;
+  // for (int l = 1; l < NL; ++l) {
+  //     X.col(l) = A_c.transpose() * X.col(l - 1);
+  // }
+
+  // Gd_(0, 0) = -Gi_(0,0);
+  // for (int l = 1; l < NL; ++l) {
+  //     Gd_(0, l) = 1.0/(R + B_tilde.transpose() * K_tilde * B_tilde) * B_tilde.transpose() * X.col(l - 1);
+  // }
 }
+
+void WalkingController::previewcontroller(double dt, int NL, int tick, double x_i, double y_i, Eigen::Vector3d xs, Eigen::Vector3d ys, double& UX, double& UY, 
+       Eigen::MatrixXd Gi, Eigen::VectorXd Gd, Eigen::MatrixXd Gx, Eigen::MatrixXd A, Eigen::VectorXd B, Eigen::MatrixXd C, Eigen::Vector3d &XD, Eigen::Vector3d &YD)
+{
+  int zmp_size;
+  zmp_size = ref_zmp_.col(1).size(); 
+  Eigen::VectorXd px_ref, py_ref;
+  px_ref.resize(zmp_size);
+  py_ref.resize(zmp_size);
+  
+  for(int i = 0; i < zmp_size; i++)
+  {
+    px_ref(i) = ref_zmp_(i,0);
+    py_ref(i) = ref_zmp_(i,1);
+  }
+     
+  Eigen::VectorXd px, py;
+  px.resize(1); py.resize(1);
+  
+  if(tick == 0 && current_step_num_ == 0)
+  { 
+    preview_x_b(0) = x_i;  
+    preview_y_b(0) = y_i;
+    preview_x(0) = x_i;
+    preview_y(0) = y_i;
+  }
+  else
+  {     
+    preview_x = xs; preview_y = ys;
+         
+    preview_x_b(0) = preview_x(0) - preview_x(1)*0.005;  
+    preview_y_b(0) = preview_y(0) - preview_y(1)*0.005;
+    preview_x_b(1) = preview_x(1) - preview_x(2)*0.005;
+    preview_y_b(1) = preview_y(1) - preview_y(2)*0.005;
+    preview_x_b(2) = preview_x(2) - UX*0.005;
+    preview_y_b(2) = preview_y(2) - UY*0.005; 
+    
+  }      
+  px = C*preview_x;
+  py = C*preview_y;
+  
+  double sum_Gd_px_ref = 0, sum_Gd_py_ref = 0;
+
+  for(int i = 1; i <= NL; i++)
+  {
+    sum_Gd_px_ref = sum_Gd_px_ref + Gd(i)*(px_ref(tick + 1 + i) - px_ref(tick + i));
+    sum_Gd_py_ref = sum_Gd_py_ref + Gd(i)*(py_ref(tick + 1 + i) - py_ref(tick + i));
+  }
+ 
+  Eigen::MatrixXd del_ux(1,1);
+  Eigen::MatrixXd del_uy(1,1);
+  del_ux.setZero();
+  del_uy.setZero();
+   
+  Eigen::VectorXd GX_X(1); 
+  GX_X = Gx * (preview_x - preview_x_b);
+  Eigen::VectorXd GX_Y(1); 
+  GX_Y = Gx * (preview_y - preview_y_b);
+  
+  del_ux(0,0) = -(px(0) - px_ref(tick))*Gi(0,0) - GX_X(0) - sum_Gd_px_ref;
+  del_uy(0,0) = -(py(0) - py_ref(tick))*Gi(0,0) - GX_Y(0) - sum_Gd_py_ref;
+   
+  UX = UX + del_ux(0,0);
+  UY = UY + del_uy(0,0);
+
+  XD = A*preview_x + B*UX;
+  YD = A*preview_y + B*UY;
+    
+  MJ_graph << px_ref(tick) << "," << py_ref(tick) << "," << xd_(0) << "," << yd_(0) << "," << px(0) << "," << py(0) << endl;
+  
+  // // Determine disturbance rejected zmp preview
+  // double zmp_preview_x = 0;
+  // double zmp_preview_y = 0;
+  // for(int l = 1; l < NL; l++)
+  // {
+  //   zmp_preview_x += Gd_(0, l) * ref_zmp_(walking_tick_ + l, 0);
+  //   zmp_preview_y += Gd_(0, l) * ref_zmp_(walking_tick_ + l, 1);
+  // }
+
+  // // Determine control input
+  // double output_x = (C_ * xs)(0,0);
+  // double output_y = (C_ * ys)(0,0);
+
+  // x_i += (output_x - ref_zmp_(walking_tick_, 0));
+  // y_i += (output_y - ref_zmp_(walking_tick_, 1));
+
+  // double ctrl_input_x = -Gi_ * x_i - (Gx_ * xs)(0,0) - zmp_preview_x;
+  // double ctrl_input_y = -Gi_ * y_i - (Gx_ * ys)(0,0) - zmp_preview_y;
+
+  // // Determine cart-model states
+  // XD = A_ * xs + B_ * ctrl_input_x;
+  // YD = A_ * ys + B_ * ctrl_input_y;
+} 
 
 void WalkingController::getFootTrajectory()
 {
@@ -1427,3 +1487,4 @@ void WalkingController::slowCalc()
 }
 
 }
+

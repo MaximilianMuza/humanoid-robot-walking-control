@@ -63,8 +63,6 @@ public:
   void getFootTrajectory();
   void computeIkControl_MJ(Eigen::Isometry3d float_trunk_transform, Eigen::Isometry3d float_lleg_transform, Eigen::Isometry3d float_rleg_transform, Eigen::Vector12d& desired_leg_q);
   void compensator();
-  void zmpPreviewControl(Eigen::Vector12d desired_leg_q);
-  void initPreviewControl();
 
   void supportToFloatPattern();
   void updateNextStepTime();
@@ -88,7 +86,7 @@ public:
 
   //PreviewController    
   void previewcontroller(double dt, int NL, int tick, double x_i, double y_i, Eigen::Vector3d xs, Eigen::Vector3d ys, double& UX, double& UY, 
-       Eigen::MatrixXd Gi, Eigen::VectorXd Gd, Eigen::MatrixXd Gx, Eigen::MatrixXd A, Eigen::VectorXd B, Eigen::MatrixXd C, Eigen::Vector3d &XD, Eigen::Vector3d &YD);  
+       Eigen::MatrixXd Gi, Eigen::VectorXd Gd, Eigen::MatrixXd Gx, Eigen::MatrixXd A, Eigen::VectorXd B, Eigen::MatrixXd C, Eigen::Vector3d &XD, Eigen::Vector3d &YD);
   void preview_Parameter(double dt, int NL, Eigen::MatrixXd& Gi, Eigen::VectorXd& Gd, Eigen::MatrixXd& Gx, Eigen::MatrixXd& A, Eigen::VectorXd& B, Eigen::MatrixXd& C);
   void preview_Parameter_CPM(double dt, int NL, Eigen::Matrix3d& K, Eigen::Vector3d com_support_init_, Eigen::MatrixXd& Gi, Eigen::VectorXd& Gd, Eigen::MatrixXd& Gx, 
   Eigen::MatrixXd& A, Eigen::VectorXd& B, Eigen::MatrixXd& C, Eigen::MatrixXd& D, Eigen::MatrixXd& A_bar, Eigen::VectorXd& B_bar);
@@ -351,16 +349,6 @@ private:
   Eigen::Vector12d prev2_motor_q_leg_;
   Eigen::Vector12d prev2_est_disturbance_;
   Eigen::Vector12d prev_q_controlled_;
-
-  // Preview Control
-  int n_l_ = 500;
-  double G_I_;
-  Eigen::MatrixXd G_x_;
-  Eigen::MatrixXd G_d_;
-
-
-
-
 
   //Preview Control
   Eigen::Vector3d preview_x, preview_y, preview_x_b, preview_y_b, preview_x_b2, preview_y_b2;
