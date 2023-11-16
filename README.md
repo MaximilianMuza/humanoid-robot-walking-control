@@ -1,7 +1,9 @@
 # Humanoid-Robot-Walking-Control
-In this course, students are to learn essential materials for bipedal walking control of humanoid robot. Students will learn the control theory for walking. Then, simulation tools are used to implement and test what they learned in class. Project will require to understand some advanced technique and produce a working demo.
+In this course, students are to learn essential materials for bipedal walking control of humanoid robots. Students will learn the control theory for walking. Then, simulation tools are used to implement and test what they learned in class. Project will require to understand some advanced technique and produce a working demo.
 
-## Weekly homeworks
+## Weekly Homeworks
+The weekly assignments are focused on simulating various control methods within the ROS (Robot Operating System) simulation environment for a bipedal humanoid robot.
+
 1) Inverse kinematics for robot's legs
 2) ZMP planning
 3) Offline CoM planning
